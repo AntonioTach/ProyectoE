@@ -1,0 +1,90 @@
+﻿@using Entities
+@using Business
+
+
+@if (permisos.ToArray().Length >= 0)
+{
+   @if (trabajador.Plaza.PlazaTipo == "fija")
+    {
+        <a href="permisos/crear" class="btn btn-primary">Crear permiso</a>
+        <hr />
+    }
+    <table class="table table-hover table-boder">
+        <thead>
+            <tr>
+                <th>ID</th>
+                <th>Tipo</th>
+                <th>F. Elaboracion</th>
+                <th>F. Aplicacion</th>
+                <th>F. Finalizacion</th>
+                <th>Pertenece a</th>
+                <th>Aprobado/Rechazado por</th>
+                <th>Estado</th>
+                <th></th>
+            </tr>
+        </thead>
+        <tbody>
+           @foreach (var permiso in permisos)
+            {
+            <tr>
+                <th>@permiso.PermisoId</th>
+                <td>@permiso.PermisoTipo</td>
+                <td>@permiso.PermisoFechaElaboracion</td>
+                <td>@permiso.PermisoFechaAplicacion</td>
+                <td>@permiso.PermisoFechaFinalizacion</td>
+                <td>@permiso.Trabajador.TrabajadorNombre @permiso.Trabajador.TrabajadorApPaterno</td>
+                <td>
+                    @if (permiso.JefeInmediatoId > 0)
+                    {
+                        @permiso.JefeInmediato.Trabajador.TrabajadorNombre <span>&nbsp;</span> @permiso.JefeInmediato.Trabajador.TrabajadorApPaterno
+                    }
+                    else
+                    {
+                        <span>-</span>
+                    }
+                </td>
+                <td>@permiso.PermisoEstado</td>
+                <td>
+                    @if (esJefe)
+                    {
+                        <a href="permisos/autorizar/@permiso.PermisoId" class="btn btn-primary">Gestionar</a>
+                    }
+                    else
+                    {
+                        <a href="permisos/detalles/@permiso.PermisoId" class="btn btn-primary">Ver detalles</a>
+                    }
+                </td>
+            </tr>
+            }
+        </tbody>
+    </table>
+}
+else
+{
+    <div>
+        <h2>Cargando....</h2>
+    </div>
+}
+
+@code {
+    [Parameter]
+    public string TipoDeListado { get; set; }
+
+    List<PermisoEntity> permisos = new List<PermisoEntity>();
+    TrabajadorEntity trabajador = new TrabajadorEntity();
+    bool esJefe = false;
+
+    protected override void OnInitialized()
+    {
+        trabajador = B_Trabajador.TrabajadorPorNomina("836");
+        esJefe = B_Jefe.EsJefe(trabajador.TrabajadorNomina);
+        if (esJefe)
+        {
+            permisos = B_Permiso.PermisoLista();
+        }
+        else
+        {
+            permisos = B_Permiso.PermisosPorTrabajador(trabajador.TrabajadorNomina);
+        }
+    }
+}

@@ -1,0 +1,85 @@
+﻿@using Entities
+@using Business
+
+@inject NavigationManager NavManager 
+
+<div class="form-container" style="max-width: 500px; margin: 0 auto; display: block;">
+    <EditForm Model="oPermiso">
+        <div class="form-group">
+            <label>Tipo de permiso</label>
+            <InputSelect @bind-Value="oPermiso.PermisoTipo" class="form-control" disabled>
+                <option>Selecciona una opcion</option>
+                <option value="2 horas">2 horas</option>
+                <option value="Economico">Economico</option>
+                <option value="Cumpleanios">Cumplea&ntilde;os</option>
+            </InputSelect>
+        </div>
+        <div class="form-group">
+            <label>Fecha de elaboraci&oacute;n</label>
+            <InputDate type="date" @bind-Value="oPermiso.PermisoFechaElaboracion" class="form-control" disabled />
+        </div>
+        <div class="form-group">
+            <label>Fecha de aplicaci&oacute;n</label>
+            <InputDate type="date" @bind-Value="oPermiso.PermisoFechaAplicacion" class="form-control" disabled />
+        </div>
+        @if (oPermiso.PermisoTipo == "2 horas")
+        {
+            <div class="form-group">
+                <label>Hora de aplicaci&oacute;n</label>
+                <input type="text" value="@applicationTime" class="form-control" disabled />
+            </div>
+        }
+        <div class="form-group">
+            <label>Fecha de finalizaci&oacute;n</label>
+            <InputDate type="date" @bind-Value="oPermiso.PermisoFechaFinalizacion" class="form-control" disabled />
+        </div>
+        @if (oPermiso.PermisoTipo == "2 horas")
+        {
+            <div class="form-group">
+                <label>Hora de finalizaci&oacute;n</label>
+                <input type="text" value="@finalizationTime" class="form-control" disabled />
+            </div>
+        }
+        <div class="form-group">
+            <label>Motivo</label>
+            <InputTextArea @bind-Value="oPermiso.PermisoMotivo" class="form-control" disabled></InputTextArea>
+        </div>
+        <input class="btn btn-primary" value="Aceptar permiso" @onclick="AceptarPermiso" />
+        <input class="btn btn-danger" value="Rechazar permiso" @onclick="RechazarPermiso" />
+    </EditForm>
+</div>
+
+@code {
+    [Parameter]
+    public string PermisoId { get; set; }
+    PermisoEntity oPermiso = new PermisoEntity();
+    public string applicationTime = "";
+    public string finalizationTime = "";
+
+    protected override void OnInitialized()
+    {
+        oPermiso = B_Permiso.PermisoPorId(Convert.ToInt32(PermisoId));
+        if(oPermiso.PermisoTipo == "2 horas")
+        {
+            applicationTime = Convert.ToDateTime(oPermiso.PermisoFechaAplicacion).ToString("HH:mm:ss");
+            finalizationTime = Convert.ToDateTime(oPermiso.PermisoFechaFinalizacion).ToString("HH:mm:ss");
+
+        }
+    }
+
+    private void AceptarPermiso()
+    {
+        oPermiso.JefeInmediatoId = 1;
+        oPermiso.PermisoEstado = "ACEPTADO";
+        B_Permiso.ActualizarPermiso(oPermiso);
+        NavManager.NavigateTo("permisos/lista");
+    }
+
+    private void RechazarPermiso()
+    {
+        oPermiso.JefeInmediatoId = 1;
+        oPermiso.PermisoEstado = "RECHAZADO";
+        B_Permiso.ActualizarPermiso(oPermiso);
+        NavManager.NavigateTo("permisos/lista");
+    }
+}

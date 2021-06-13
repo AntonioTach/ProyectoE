@@ -1,0 +1,13 @@
+﻿@page "/permisos/autorizar/{PermisoId}"
+
+<AutorizarPermisoComponent PermisoId="@PermisoId" />
+
+@code {
+    [Parameter]
+    public string PermisoId { get; set; }
+
+    protected override void OnInitialized()
+    {
+        PermisoId = PermisoId;
+    }
+}

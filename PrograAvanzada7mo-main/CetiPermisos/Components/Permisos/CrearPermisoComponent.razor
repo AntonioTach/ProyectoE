@@ -1,0 +1,285 @@
+﻿@using Entities
+@using Business
+
+@inject NavigationManager NavManager
+
+<div class="form-container" style="max-width: 500px; margin: 0 auto; display: block;">
+    <EditForm Model="oPermiso">
+        <div class="form-group">
+            <label>Tipo de permiso</label>
+            <InputSelect @oninput="OnChangeType" @bind-Value="oPermiso.PermisoTipo" class="form-control">
+                <option>Selecciona una opcion</option>
+                <option value="2 horas">2 horas</option>
+                <option value="Economico">Economico</option>
+                <option value="Cumpleanios">Cumplea&ntilde;os</option>
+            </InputSelect>
+        </div>
+        <div class="form-group">
+            <label>Fecha de elaboraci&oacute;n</label>
+            <InputDate type="date" @bind-Value="oPermiso.PermisoFechaElaboracion" class="form-control" disabled />
+        </div>
+        @if (types.Contains(oPermiso.PermisoTipo, StringComparer.OrdinalIgnoreCase))
+        {
+            <div class="form-group">
+                <label>Fecha de aplicaci&oacute;n</label>
+                <InputDate type="date" @oninput="OnChangeApplicationDate" @bind-Value="oPermiso.PermisoFechaAplicacion" class="form-control" />
+            </div>
+           @if(oPermiso.PermisoTipo == "Economico")
+            {
+               <div class="form-group">
+                   <label>Di&iacute;s del permiso</label>
+                   <select @onchange="OnChangeNumberOfDays" value="@numberOfDays" class="form-control">
+                       <option>Selecciona una opci&oacute;n</option>
+                       <option value="1">1 d&iacute;a</option>
+                       <option value="2">2 d&iacute;as</option>
+                       <option value="3">3 d&iacute;as</option>
+                   </select>
+               </div>
+            }
+            @if (oPermiso.PermisoTipo == "2 horas")
+            {
+                <div class="form-group">
+                    <label>Hora de aplicaci&oacute;n</label>
+                    <select @onchange="OnChangeTime" value="@applicationTime" class="form-control">
+                       @foreach(var hour in hours)
+                        {
+                            <option value="@hour">@hour horas</option>
+                        }
+                    </select>
+                </div>
+            }
+            <div class="form-group">
+                <label>Fecha de finalizaci&oacute;n</label>
+                <InputDate type="date" @bind-Value="oPermiso.PermisoFechaFinalizacion" class="form-control" disabled />
+            </div>
+            @if (oPermiso.PermisoTipo == "2 horas")
+            {
+                <div class="form-group">
+                    <label>Hora de finalizaci&oacute;n</label>
+                    <input class="form-control" value="@finalizationTime" disabled />
+                </div>
+            }
+            <div class="form-group">
+                <label>Motivo</label>
+                <InputTextArea @bind-Value="oPermiso.PermisoMotivo" class="form-control"></InputTextArea>
+            </div>
+        }
+        <div class="d-block">
+            @if(message is not null)
+             {
+                <SurveyPrompt Title="@message" />
+             }
+        </div>
+        <input class="btn btn-primary" type="submit" value="Solicitar permiso" @onclick="CreatePermiso" />
+    </EditForm>
+</div>
+
+
+@code {
+
+    PermisoEntity oPermiso = new PermisoEntity();
+    TrabajadorEntity trabajador = new TrabajadorEntity();
+    public string message = null;
+    public string[] types = { "2 horas", "Cumpleanios", "Economico" };
+    public string[] hours = { "07:00", "13:00" };
+    private static int currentYear = DateTime.Now.Year;
+    public DateTime[] diasFestivos = { new DateTime(currentYear, 1,1) };
+    public string applicationTime = "";
+    public string finalizationTime = "";
+    public string numberOfDays = null;
+
+    protected override void OnInitialized()
+    {
+        trabajador = B_Trabajador.TrabajadorPorNomina("106");
+        oPermiso.PermisoFechaElaboracion = DateTime.Now;
+        oPermiso.PermisoFechaAplicacion = DateTime.Now;
+        oPermiso.TrabajadorId = trabajador.TrabajadorNomina;
+        applicationTime = hours[0];
+        finalizationTime = "09:00";
+    }
+
+    private void CreatePermiso()
+    {
+        // si la fecha de aplicacion es antes de hoy, salimos de la funcion
+        if (DateTime.Now > oPermiso.PermisoFechaAplicacion)
+        {
+            message = "La fecha de aplicación no puede ser anterior al día de hoy.";
+            return;
+        }
+        // validar si puede pedir permisos en funcion de los permisos pedidos anteriormente 
+        if (!ValidarNumeroDePermisos()) { return; }
+        // validar que los datos el permiso actual sean correctos
+        if (!ValidarPorTipoDePermiso()) { return; }
+        // Agregar horas cuando sea permiso de dos horas
+        if (oPermiso.PermisoTipo == "2 horas")
+        {
+            // Obtenemos los primeros dos numeros del string que representa la hora e.g 17:00 => 17
+            var startHours = applicationTime.Split(':')[0];
+            var endHours = finalizationTime.Split(':')[0];
+            // Agregamos la cantidad de horas correspondientes a las fechas de aplicacion y fechas de cierre con la funcion .AddHours
+            oPermiso.PermisoFechaFinalizacion = Convert.ToDateTime(oPermiso.PermisoFechaFinalizacion).AddHours(Double.Parse(endHours));
+            oPermiso.PermisoFechaAplicacion = Convert.ToDateTime(oPermiso.PermisoFechaAplicacion).AddHours(Double.Parse(startHours));
+        }
+        oPermiso.PermisoEstado = "PENDIENTE";
+        oPermiso.JefeInmediatoId = null;
+        B_Permiso.CrearPermiso(oPermiso);
+        NavManager.NavigateTo("permisos/lista");
+    }
+
+    private bool ValidarPorTipoDePermiso()
+    {
+        // validaciones y procesos para permiso de cumpleaños
+        if (oPermiso.PermisoTipo == "Cumpleanios")
+        {
+            // validar que la fecha de aplicacion sea max 6 meses despues de la fecha de cumpleaños
+            int bdayMonth = trabajador.TrabajadorFechaNacimiento.Month;
+
+            DateTime applicationDate = oPermiso.PermisoFechaAplicacion;
+            DateTime currentBirthday = new DateTime(currentYear, bdayMonth, trabajador.TrabajadorFechaNacimiento.Day);
+
+            // si la fecha de aplicacion es antes que el mes de cumpleaños salimos de la función
+            if (applicationDate < currentBirthday)
+            {
+                message = "Los permisos de cumpleaños no pueden ser antes de la fecha de cumpleaños.";
+                return false;
+            }
+            // si la fecha de aplicacion sigue siendo mas grande que el cumpleaños + 6 meses, salimos de la función
+            if (currentBirthday.AddMonths(6) < applicationDate)
+            {
+                message = "La fecha de aplicación tiene que ser máximo 6 meses después de la fecha de cumpleaños.";
+                return false;
+            }
+        }
+        if (oPermiso.PermisoTipo == "Economico")
+        {
+            DateTime applicationDate = oPermiso.PermisoFechaAplicacion;
+            DateTime elaborationDate = oPermiso.PermisoFechaElaboracion;
+            // validar que tenga por lo menos dos dias de diferencia la fecha de aplicacion y la de elaboracion
+            if (elaborationDate.AddDays(2) > applicationDate)
+            {
+                message = "La fecha de aplicación tiene que ser mínimo 2 diás después de la fecha actual.";
+                return false;
+            }
+        }
+        return true;
+    }
+
+    private bool ValidarNumeroDePermisos()
+    {
+        List<PermisoEntity> permisos = B_Permiso.PermisosPorTrabajador(trabajador.TrabajadorNomina);
+        // permisos en lapso de dos dias
+        if(permisos.ToArray().Length != 0)
+        {
+            if (permisos[0].PermisoFechaElaboracion.AddDays(2) > DateTime.Now)
+            {
+                message = "No se puede perdir más de un permiso en un lapso de dos días";
+                return false;
+            }
+        }
+        // permisos economicos
+        if(oPermiso.PermisoTipo == "Economico")
+        {
+            List<PermisoEntity> permisosEconomicos = permisos
+                                                        .Where(p => p.PermisoTipo == "Economico")
+                                                        .Where(p => p.PermisoFechaElaboracion.Year == currentYear)
+                                                        .ToList();
+            List<PermisoEntity> permisosEconomicosDelMes = permisosEconomicos
+                                                            .Where(p => p.PermisoFechaElaboracion.Month == DateTime.Now.Month)
+                                                            .ToList();
+            // si este año hay 9 o más permisos economicos, no se pueden pedir más
+            if (permisosEconomicos.ToArray().Length >= 9)
+            {
+                message = "No se pueden perdir más de 9 permisos económicos en un año.";
+                return false;
+            }
+            // si hay otro permiso economico en el mismo mes, no se pueden pedir más
+            if(permisosEconomicosDelMes.ToArray().Length != 0)
+            {
+                message = "No se puede perdir más de un permiso económico en el mismo mes.";
+                return false;
+            }
+        }
+
+        // permisos de dos horas
+        if(oPermiso.PermisoTipo == "2 horas")
+        {
+            // permisos de dos horas dentro de la quincena actual
+            int currentMonth = DateTime.Now.Month;
+            int currentMonthMaxDays = (new DateTime(currentYear, currentMonth, 1).AddMonths(1).AddDays(-1)).Day;
+            bool firstHalf = oPermiso.PermisoFechaElaboracion.Day <= 15 ? true : false;
+            List<PermisoEntity> permisosDeDosHoras = permisos
+                                                        .Where(p => p.PermisoTipo == "2 horas")
+                                                        .Where(p =>
+                                                            p.PermisoFechaElaboracion > new DateTime(currentYear, currentMonth, firstHalf ? 1 : 15)
+                                                            && p.PermisoFechaElaboracion < new DateTime(currentYear, currentMonth, firstHalf ? 15 : currentMonthMaxDays)
+                                                        )
+                                                        .ToList();
+            // si hay mas de dos permisos en esta quincena, no se otorga otro
+            if(permisosDeDosHoras.ToArray().Length >= 2)
+            {
+                message = "No se puede perdir más de dos permisos por quincena.";
+                return false;
+            }
+        }
+        return true;
+    }
+
+    private bool ValidateDatesDiff()
+    {
+        var firstDate = oPermiso.PermisoFechaElaboracion;
+        var secondDate = oPermiso.PermisoFechaAplicacion;
+        var datesDiff = Convert.ToInt32((secondDate - firstDate).TotalDays.ToString());
+        return datesDiff > 2 ? false : true;
+    }
+
+    private void OnChangeType(ChangeEventArgs e)
+    {
+        if(e.Value.ToString() == "Economico")
+        {
+            oPermiso.PermisoFechaFinalizacion = oPermiso.PermisoFechaAplicacion.AddDays(1);
+            numberOfDays = "1";
+        }
+        if (e.Value.ToString() == "Cumpleanios")
+            oPermiso.PermisoFechaFinalizacion = oPermiso.PermisoFechaAplicacion.AddDays(1);
+        if (e.Value.ToString() == "2 horas")
+            oPermiso.PermisoFechaFinalizacion = oPermiso.PermisoFechaAplicacion.AddHours(2);
+    }
+
+    private void OnChangeApplicationDate(ChangeEventArgs e)
+    {
+        if (oPermiso.PermisoTipo == "Economico")
+        {
+            if (numberOfDays == "1")
+                oPermiso.PermisoFechaFinalizacion = Convert.ToDateTime(e.Value.ToString()).AddDays(1);
+            if (numberOfDays == "2")
+                oPermiso.PermisoFechaFinalizacion = Convert.ToDateTime(e.Value.ToString()).AddDays(2);
+            if (numberOfDays == "3")
+                oPermiso.PermisoFechaFinalizacion = Convert.ToDateTime(e.Value.ToString()).AddDays(3);
+        }
+        if (oPermiso.PermisoTipo == "Cumpleanios")
+            oPermiso.PermisoFechaFinalizacion = Convert.ToDateTime(e.Value.ToString()).AddDays(1);
+        if (oPermiso.PermisoTipo == "2 horas")
+            oPermiso.PermisoFechaFinalizacion = Convert.ToDateTime(e.Value.ToString()).AddHours(2);
+    }
+
+    private void OnChangeTime(ChangeEventArgs e)
+    {
+        var currentIndex = Array.IndexOf(hours, e.Value.ToString());
+        if(currentIndex == 0)
+            finalizationTime = "09:00";
+        else if(currentIndex == 1)
+            finalizationTime = "15:00";
+    }
+
+    private void OnChangeNumberOfDays(ChangeEventArgs e)
+    {
+        oPermiso.PermisoFechaFinalizacion = oPermiso.PermisoFechaFinalizacion.AddDays(Convert.ToInt32(numberOfDays) * -1);
+        numberOfDays = e.Value.ToString();
+        if (e.Value.ToString() == "1")
+            oPermiso.PermisoFechaFinalizacion = oPermiso.PermisoFechaFinalizacion.AddDays(1);
+        if (e.Value.ToString() == "2")
+            oPermiso.PermisoFechaFinalizacion = oPermiso.PermisoFechaFinalizacion.AddDays(2);
+        if (e.Value.ToString() == "3")
+            oPermiso.PermisoFechaFinalizacion = oPermiso.PermisoFechaFinalizacion.AddDays(3);
+    }
+}
